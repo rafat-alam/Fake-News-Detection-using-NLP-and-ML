@@ -7,7 +7,7 @@ from model import pipeline
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Lifespan event handler to load the already-trained model
-    pipeline.load_model("model.pkl")
+    pipeline.load_model("models/pretrained_model_01.pkl")
     yield
 
 # Initialize FastAPI App with Lifespan
