@@ -1,17 +1,29 @@
+# Use a lightweight Python image
 FROM python:3.11-slim
 
-# Set working directory
+# Set the working directory inside the container
 WORKDIR /app
 
-# Install dependencies first (cache-friendly)
+# Create a non-root user for better security
+RUN useradd --create-home appuser
+
+# Copy dependency file first for better Docker layer caching
 COPY requirements.txt .
+
+# Install Python dependencies
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy app files
+# Copy the application source code
 COPY . .
 
-# Expose HF default port
-EXPOSE 7860
+# Give the non-root user ownership of the application files
+RUN chown -R appuser:appuser /app
 
-# Start FastAPI app
-CMD ["uvicorn", "app:app", "--host", "0.0.0.0", "--port", "7860"]
+# Run the application as a non-root user
+USER appuser
+
+# Render provides the PORT environment variable
+EXPOSE 10000
+
+# Start the FastAPI application
+CMD ["sh", "-c", "uvicorn app:app --host 0.0.0.0 --port ${PORT:-10000}"]

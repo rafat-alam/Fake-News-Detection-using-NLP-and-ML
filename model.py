@@ -1,3 +1,4 @@
+import joblib
 import pandas as pd
 import re
 import string
@@ -137,6 +138,22 @@ class ModelPipeline:
             "model_used": display_name,
             "cleaned_text": cleaned
         }
+
+    # Save the trained models, TF-IDF vectorizer and metrics
+    def save_model(self, path="model.pkl"):
+        joblib.dump({
+            "tfidf_vectorizer": self.tfidf_vectorizer,
+            "trained_models": self.trained_models,
+            "model_metrics": self.model_metrics
+        }, path)
+
+    # Load the previously trained models, TF-IDF vectorizer and metrics
+    def load_model(self, path="model.pkl"):
+        saved_data = joblib.load(path)
+
+        self.tfidf_vectorizer = saved_data["tfidf_vectorizer"]
+        self.trained_models = saved_data["trained_models"]
+        self.model_metrics = saved_data["model_metrics"]
 
 # Global singleton instance
 pipeline = ModelPipeline()
