@@ -28,7 +28,7 @@ class NewsPredictionRequest(BaseModel):
 class NewsPredictionResponse(BaseModel):
     prediction: str
     label: int
-    confidence: float
+    confidence: Optional[float] = None
     model_used: str
     cleaned_text: str
 

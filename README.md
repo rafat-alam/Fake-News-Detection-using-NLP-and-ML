@@ -3,9 +3,8 @@ title: Fake News Detection using NLP and ML
 emoji: 📰
 colorFrom: blue
 colorTo: indigo
-sdk: gradio
-python_version: "3.10"
-app_file: app.py
+sdk: docker
+app_port: 7860
 ---
 
 # Fake News Detection using NLP and ML
