@@ -5,6 +5,7 @@ import warnings
 from typing import Dict, Optional
 
 # NLTK
+import nltk
 from nltk.corpus import stopwords
 
 # Scikit-Learn
@@ -23,6 +24,9 @@ from sklearn.tree import DecisionTreeClassifier
 
 # Suppress warning messages during model training
 warnings.filterwarnings('ignore')
+
+# Download stopwords from NLTK
+nltk.download('stopwords', quiet=True)
 
 stop_words = set(stopwords.words('english'))
 
