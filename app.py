@@ -6,7 +6,7 @@ from model import pipeline
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """Lifespan event handler to load and train ML models on application startup."""
+    # Lifespan event handler to load and train ML models on application startup
     pipeline.load_and_train()
     yield
 
@@ -20,14 +20,15 @@ app = FastAPI(
 
 # Input Schema for /predict
 class NewsPredictionRequest(BaseModel):
-    text: str = Field(..., description="The news article title or text body to analyze", min_length=3)
+    title: str = Field(..., description="The news article title to analyze", min_length=3)
+    text: str = Field(..., description="The news article text body to analyze", min_length=3)
     model: Optional[str] = Field("logistic_regression", description="Classifier model choice: 'logistic_regression', 'passive_aggressive', 'naive_bayes', 'decision_tree', or 'random_forest'")
 
 # Output Schema for /predict
 class NewsPredictionResponse(BaseModel):
     prediction: str
     label: int
-    confidence: Optional[float]
+    confidence: float
     model_used: str
     cleaned_text: str
 
@@ -47,7 +48,7 @@ def get_metrics():
 @app.post("/predict", response_model=NewsPredictionResponse)
 def predict_news(request: NewsPredictionRequest):
     try:
-        result = pipeline.predict(text=request.text, model_key=request.model)
+        result = pipeline.predict(title=request.title, text=request.text, model_key=request.model)
         return NewsPredictionResponse(**result)
     except KeyError as e:
         raise HTTPException(status_code=400, detail=str(e))

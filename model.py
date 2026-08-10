@@ -1,32 +1,28 @@
 import pandas as pd
-import numpy as np
 import re
 import string
 import warnings
 from typing import Dict, Optional
 
-# Scikit-Learn
-from sklearn.model_selection import train_test_split
-from sklearn.feature_extraction.text import TfidfVectorizer
-from sklearn.linear_model import LogisticRegression, PassiveAggressiveClassifier
-from sklearn.naive_bayes import MultinomialNB
-from sklearn.tree import DecisionTreeClassifier
-from sklearn.ensemble import RandomForestClassifier
-from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score
-
 # NLTK
-import nltk
 from nltk.corpus import stopwords
 
-# Suppress deprecation/future warnings during model fitting
-warnings.filterwarnings('ignore')
+# Scikit-Learn
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.linear_model import LogisticRegression, PassiveAggressiveClassifier
+from sklearn.metrics import (
+    accuracy_score,
+    f1_score,
+    precision_score,
+    recall_score
+)
+from sklearn.model_selection import train_test_split
+from sklearn.naive_bayes import MultinomialNB
+from sklearn.tree import DecisionTreeClassifier
 
-# Download required NLTK resources safely
-for resource in ['punkt', 'punkt_tab', 'stopwords']:
-    try:
-        nltk.download(resource, quiet=True)
-    except Exception:
-        pass
+# Suppress warning messages during model training
+warnings.filterwarnings('ignore')
 
 stop_words = set(stopwords.words('english'))
 
@@ -65,18 +61,21 @@ class ModelPipeline:
         X = self.tfidf_vectorizer.fit_transform(data['cleaned_content'])                            # Transforms the text data into TF-IDF vectors
         y = data['label'].values                                                                    # Extracts the labels
 
+        # Split the data into training and testing sets
         X_train, X_test, y_train, y_test = train_test_split(
             X, y, test_size=0.2, random_state=42, stratify=y
         )
 
+        # Define the models to be trained
         raw_models = {
-            'logistic_regression': ('Logistic Regression', LogisticRegression(max_iter=1000, random_state=42)),
-            'passive_aggressive': ('Passive Aggressive Classifier', PassiveAggressiveClassifier(max_iter=50, random_state=42)),
             'naive_bayes': ('Multinomial Naive Bayes', MultinomialNB()),
-            'decision_tree': ('Decision Tree', DecisionTreeClassifier(random_state=42)),
-            'random_forest': ('Random Forest', RandomForestClassifier(n_estimators=100, random_state=42, n_jobs=-1))
+            'logistic_regression': ('Logistic Regression', LogisticRegression()),
+            'passive_aggressive': ('Passive Aggressive Classifier', PassiveAggressiveClassifier()),
+            'decision_tree': ('Decision Tree', DecisionTreeClassifier()),
+            'random_forest': ('Random Forest', RandomForestClassifier())
         }
 
+        # Train the models
         for key, (display_name, model) in raw_models.items():
             model.fit(X_train, y_train)
             y_pred = model.predict(X_test)
@@ -89,37 +88,44 @@ class ModelPipeline:
             self.trained_models[key] = (display_name, model)
             self.model_metrics[key] = {
                 'model_name': display_name,
-                'accuracy': round(acc, 4),
-                'precision': round(prec, 4),
-                'recall': round(rec, 4),
-                'f1_score': round(f1, 4),
+                'accuracy': round(acc, 5),
+                'precision': round(prec, 5),
+                'recall': round(rec, 5),
+                'f1_score': round(f1, 5),
             }
 
-    def predict(self, text: str, model_key: str = 'logistic_regression') -> Dict:
-        """Predicts whether the text is REAL NEWS or FAKE NEWS using selected model."""
+    def predict(self, title: str, text: str, model_key: str = 'logistic_regression') -> Dict:
+        if not model_key:
+            model_key = "logistic_regression"
+
+        model_key = model_key.lower()
+
         if self.tfidf_vectorizer is None:
             raise ValueError("Models are not initialized yet.")
-            
-        model_key = model_key.lower() if model_key else "logistic_regression"
+
         if model_key not in self.trained_models:
             raise KeyError(f"Model '{model_key}' not found. Available options: {list(self.trained_models.keys())}")
-        
+
         display_name, selected_model = self.trained_models[model_key]
-        
-        cleaned = clean_text(text)
+
+        cleaned = clean_text(title + " " + text)
         if not cleaned:
             raise ValueError("Input text contains no valid words after preprocessing.")
-            
+
+        # Predict using the selected model
         vectorized = self.tfidf_vectorizer.transform([cleaned])
         prediction_val = int(selected_model.predict(vectorized)[0])
-        
+
+        # Calculate confidence
         confidence_val = None
         if hasattr(selected_model, "predict_proba"):
             probs = selected_model.predict_proba(vectorized)[0]
-            confidence_val = round(float(max(probs)), 4)
-            
+            confidence_val = round(float(max(probs)), 5)
+
+        # Determine the result label
         result_label = "REAL NEWS" if prediction_val == 1 else "FAKE NEWS"
-        
+
+        # Return the result
         return {
             "prediction": result_label,
             "label": prediction_val,
