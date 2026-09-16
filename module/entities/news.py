@@ -12,3 +12,5 @@ class News:
   date: date
   time: time
   published_by: str
+  confidence: str
+  label: int
