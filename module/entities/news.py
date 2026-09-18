@@ -1,7 +1,7 @@
 # module/entities/news.py
 
 from dataclasses import dataclass
-from datetime import date, time
+from datetime import datetime
 
 @dataclass
 class News:
@@ -9,8 +9,7 @@ class News:
   title: str
   text: str
   subject: str
-  date: date
-  time: time
+  published_at: datetime
   published_by: str
   confidence: str
   label: int
