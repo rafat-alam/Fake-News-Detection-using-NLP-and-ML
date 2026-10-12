@@ -13,17 +13,30 @@ COPY requirements.txt .
 # Install Python dependencies
 RUN pip install --no-cache-dir -r requirements.txt
 
+# Download NLP resources once while building; startup works without internet.
+ENV NLTK_DATA=/usr/local/share/nltk_data
+RUN python -m nltk.downloader -d /usr/local/share/nltk_data stopwords
+
+# Redis runs locally alongside the API in this container.
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends redis-server \
+    && rm -rf /var/lib/apt/lists/*
+
 # Copy the application source code
 COPY . .
 
 # Give the non-root user ownership of the application files
-RUN chown -R appuser:appuser /app
+RUN mkdir -p /data && chown -R appuser:appuser /app /data
 
-# Run the application as a non-root user
-USER appuser
+ENV REDIS_URL=redis://127.0.0.1:6379/0
+VOLUME ["/data"]
+
+# Repair mounted Redis volume ownership at startup, then drop to appuser
+# before starting either Redis or the API.
+USER root
 
 # Render provides the PORT environment variable
 EXPOSE 10000
 
-# Start the FastAPI application
-CMD ["sh", "-c", "uvicorn app:app --host 0.0.0.0 --port ${PORT:-10000}"]
+# Start Redis first, then the API; stop both when either exits.
+CMD ["python", "-m", "module.container_entrypoint"]

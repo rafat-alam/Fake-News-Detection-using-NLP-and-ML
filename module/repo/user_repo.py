@@ -30,7 +30,8 @@ class UserRepo:
       "username",
       "name",
       "email",
-      "password_hash"
+      "password_hash",
+      "is_editor",
     }
 
     if field not in allowed_fields:
@@ -58,10 +59,11 @@ class UserRepo:
     if search_by not in allowed_fields:
       return None
 
+    comparison = f"{search_by} = %s" if search_by == 'user_id' else f"lower({search_by}) = lower(%s)"
     query = f"""
       SELECT user_id, username, name, email, password_hash, is_editor
       FROM users
-      WHERE {search_by} = %s
+      WHERE {comparison}
     """
 
     with get_connection() as connection:
@@ -73,7 +75,7 @@ class UserRepo:
       return None
 
     return User(
-      user_id=row[0],
+      user_id=str(row[0]),
       username=row[1],
       name=row[2],
       email=row[3],
@@ -95,7 +97,7 @@ class UserRepo:
 
     return [
       User(
-        user_id=row[0],
+        user_id=str(row[0]),
         username=row[1],
         name=row[2],
         email=row[3],

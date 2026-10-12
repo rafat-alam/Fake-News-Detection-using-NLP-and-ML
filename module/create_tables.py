@@ -23,9 +23,13 @@ def create_tables():
           title VARCHAR(500) NOT NULL,
           text TEXT NOT NULL,
           subject VARCHAR(100) NOT NULL,
-          date DATE NOT NULL,
-          time TIME NOT NULL,
+          published_at TIMESTAMPTZ NOT NULL,
           published_by UUID NOT NULL,
+          confidence DOUBLE PRECISION CHECK (confidence BETWEEN 0 AND 1),
+          label SMALLINT NOT NULL CHECK (label IN (0, 1)),
+          model_key VARCHAR(50) NOT NULL DEFAULT 'logistic_regression'
+            CHECK (model_key IN ('logistic_regression', 'passive_aggressive',
+                                'naive_bayes', 'decision_tree', 'random_forest')),
 
           CONSTRAINT fk_published_by
             FOREIGN KEY (published_by)
@@ -33,6 +37,12 @@ def create_tables():
             ON DELETE CASCADE
         );
       """)
+
+      cursor.execute("CREATE UNIQUE INDEX IF NOT EXISTS users_username_lower ON users (lower(username))")
+      cursor.execute("CREATE UNIQUE INDEX IF NOT EXISTS users_email_lower ON users (lower(email))")
+      cursor.execute("CREATE INDEX IF NOT EXISTS news_feed ON news (published_at DESC, news_id DESC)")
+      cursor.execute("CREATE INDEX IF NOT EXISTS news_author ON news (published_by, published_at DESC)")
+      cursor.execute("CREATE INDEX IF NOT EXISTS news_subject ON news (subject)")
 
     connection.commit()
 

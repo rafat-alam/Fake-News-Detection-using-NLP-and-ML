@@ -4,10 +4,12 @@ import re
 import string
 import warnings
 from typing import Dict, Optional
+from pathlib import Path
 
 # NLTK
 import nltk
 from nltk.corpus import stopwords
+nltk.data.path.insert(0, str(Path(__file__).resolve().parent / 'nltk_data'))
 
 # Scikit-Learn
 from sklearn.ensemble import RandomForestClassifier
@@ -26,23 +28,27 @@ from sklearn.tree import DecisionTreeClassifier
 # Suppress warning messages during model training
 warnings.filterwarnings('ignore')
 
-# Download stopwords from NLTK
-nltk.download('stopwords', quiet=True)
+# Provision this corpus during setup/build, rather than making network calls on import.
+stop_words = None
 
-stop_words = set(stopwords.words('english'))
+def load_stopwords():
+    global stop_words
+    if stop_words is None:
+        stop_words = set(stopwords.words('english'))
+    return stop_words
 
 def clean_text(text: str) -> str:
     if not isinstance(text, str):
         return ""
-    text = text.lower()                                                   # Converts text to lowercase
-    text = re.sub(r'https?://\S+|www\.\S+', '', text)                     # Removes URLs
-    text = re.sub(r'<.*?>+', '', text)                                    # Removes HTML tags
-    text = re.sub(r'[%s]' % re.escape(string.punctuation), '', text)      # Removes punctuation
-    text = re.sub(r'\n', ' ', text)                                       # Removes newlines
-    text = re.sub(r'\w*\d\w*', '', text)                                  # Removes numbers
-    words = text.split()                                                  # Splits text into words
-    words = [w for w in words if w not in stop_words and len(w) > 2]      # Removes stopwords and short words
-    return " ".join(words)                                                # Joins words back into text
+    text = text.lower()                                                    # Converts text to lowercase
+    text = re.sub(r'https?://\S+|www\.\S+', '', text)                      # Removes URLs
+    text = re.sub(r'<.*?>+', '', text)                                     # Removes HTML tags
+    text = re.sub(r'[%s]' % re.escape(string.punctuation), '', text)       # Removes punctuation
+    text = re.sub(r'\n', ' ', text)                                        # Removes newlines
+    text = re.sub(r'\w*\d\w*', '', text)                                   # Removes numbers
+    words = text.split()                                                   # Splits text into words
+    words = [w for w in words if w not in load_stopwords() and len(w) > 2] # Removes stopwords and short words
+    return " ".join(words)                                                 # Joins words back into text
 
 class ModelPipeline:
     def __init__(self):
@@ -62,14 +68,14 @@ class ModelPipeline:
         data['full_content'] = data['title'].fillna('') + " " + data['text'].fillna('')                            # Concatenates title and text
         data['cleaned_content'] = data['full_content'].apply(clean_text)                                           # Cleans the text
 
-        self.tfidf_vectorizer = TfidfVectorizer(max_features=5000, ngram_range=(1, 2))              # Creates a TF-IDF vectorizer
-        X = self.tfidf_vectorizer.fit_transform(data['cleaned_content'])                            # Transforms the text data into TF-IDF vectors
-        y = data['label'].values                                                                    # Extracts the labels
-
-        # Split the data into training and testing sets
-        X_train, X_test, y_train, y_test = train_test_split(
-            X, y, test_size=0.2, random_state=42, stratify=y
+        # Fit vocabulary only on training data to prevent evaluation leakage.
+        text_train, text_test, y_train, y_test = train_test_split(
+            data['cleaned_content'], data['label'].values,
+            test_size=0.2, random_state=42, stratify=data['label'].values,
         )
+        self.tfidf_vectorizer = TfidfVectorizer(max_features=5000, ngram_range=(1, 2))
+        X_train = self.tfidf_vectorizer.fit_transform(text_train)
+        X_test = self.tfidf_vectorizer.transform(text_test)
 
         # Define the models to be trained
         raw_models = {
@@ -149,6 +155,7 @@ class ModelPipeline:
 
     # Load the previously trained models, TF-IDF vectorizer and metrics
     def load_model(self, path="model.pkl"):
+        load_stopwords()
         saved_data = joblib.load(path)
 
         self.tfidf_vectorizer = saved_data["tfidf_vectorizer"]

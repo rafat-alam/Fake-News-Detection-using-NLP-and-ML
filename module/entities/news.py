@@ -11,5 +11,6 @@ class News:
   subject: str
   published_at: datetime
   published_by: str
-  confidence: str
+  confidence: float | None
   label: int
+  model_key: str = "logistic_regression"

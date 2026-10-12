@@ -1,0 +1,3 @@
+# HTTP integration tests (unittest is included in Python).
+-r requirements.txt
+httpx==0.28.1

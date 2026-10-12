@@ -1,0 +1,56 @@
+services:
+  fake-news-app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: fake-news-detection
+    init: true
+    restart: unless-stopped
+    ports:
+      - "${APP_PORT:-10000}:10000"
+    env_file:
+      - .env
+    environment:
+      PORT: "10000"
+      REDIS_URL: redis://127.0.0.1:6379/0
+    volumes:
+      - redis_data:/data
+    stop_grace_period: 30s
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:10000/health/ready', timeout=5)"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    develop:
+      watch:
+        - action: sync+restart
+          path: ./app.py
+          target: /app/app.py
+
+        - action: sync+restart
+          path: ./model.py
+          target: /app/model.py
+
+        - action: sync+restart
+          path: ./module
+          target: /app/module
+
+        - action: sync+restart
+          path: ./models
+          target: /app/models
+
+        - action: rebuild
+          path: ./requirements.txt
+
+        - action: rebuild
+          path: ./Dockerfile
+
+        - action: rebuild
+          path: ./compose.yaml
+
+        - action: rebuild
+          path: ./.env
+
+volumes:
+  redis_data:
