@@ -38,6 +38,15 @@ def create_tables():
         );
       """)
 
+      # Existing installations predate per-article model selection. Keep all
+      # rows while upgrading that table to the current API contract.
+      cursor.execute("""
+        ALTER TABLE news ADD COLUMN IF NOT EXISTS model_key VARCHAR(50)
+          NOT NULL DEFAULT 'logistic_regression'
+          CHECK (model_key IN ('logistic_regression', 'passive_aggressive',
+                              'naive_bayes', 'decision_tree', 'random_forest'))
+      """)
+
       cursor.execute("CREATE UNIQUE INDEX IF NOT EXISTS users_username_lower ON users (lower(username))")
       cursor.execute("CREATE UNIQUE INDEX IF NOT EXISTS users_email_lower ON users (lower(email))")
       cursor.execute("CREATE INDEX IF NOT EXISTS news_feed ON news (published_at DESC, news_id DESC)")

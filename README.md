@@ -20,7 +20,9 @@ Copy `.env.example` to `.env`, set `DATABASE_URL` to your Neon connection string
 with `sslmode=require`, and set a random `JWT_SECRET` of at least 32 characters.
 Use `REDIS_URL=redis://127.0.0.1:6379/0`. The database starts empty; tables and
 indexes are created automatically at startup (`AUTO_CREATE_TABLES=true`). This
-schema setup does not migrate an older database.
+schema setup adds a missing news `model_key` column on older installations,
+defaulting legacy articles to `logistic_regression`. Other legacy schema changes
+still require a separate migration.
 
 Keep `models/pretrained_model_01.pkl`, or place `True.csv` and `Fake.csv` in
 `dataset/` and run `python train.py`. Only load model files you trust.
