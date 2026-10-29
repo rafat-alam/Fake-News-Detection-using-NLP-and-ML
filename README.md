@@ -41,7 +41,7 @@ docker compose up --build -d
 docker compose logs -f fake-news-app
 ```
 
-`DATABASE_URL` and Gmail credentials come from `.env`; the container sets
+`DATABASE_URL` and Brevo credentials come from `.env`; the container sets
 `REDIS_URL=redis://127.0.0.1:6379/0`. Redis starts before the API. Stopping the
 container shuts down both processes; if either exits unexpectedly, the container
 exits so Compose can restart it. When running Uvicorn directly outside Docker,
@@ -66,19 +66,62 @@ the exact Flutter Web origin(s), separated by commas.
 
 ## Email and editor access
 
-Gmail sends OTPs using SSL on `smtp.gmail.com:465`. Fill these values in `.env`:
+OTP email delivery defaults to **Brevo SMTP**. In Brevo, configure your sender
+and complete its verification requirements, then copy the SMTP login and generate
+an SMTP key under **SMTP & API > SMTP**. The SMTP login can differ from your
+account email. Use an **SMTP key**, not a Brevo API key or your account password.
+
+Set these values in local `.env`, or in **Render > your service > Environment**:
 
 ```dotenv
-EMAIL_MODE=gmail
-GMAIL_ADDRESS=your_email@gmail.com
-GMAIL_APP_PASSWORD=your_16_character_app_password
+EMAIL_MODE=brevo_smtp
+BREVO_SENDER_EMAIL=your_verified_sender@example.com
+BREVO_SENDER_NAME=NewsLens
+BREVO_SMTP_LOGIN=your_brevo_smtp_login
+BREVO_SMTP_KEY=your_brevo_smtp_key
+BREVO_SMTP_PORT=2525
 ```
 
-Use a [Google app password](https://support.google.com/mail/answer/185833),
-which requires 2-Step Verification. Spaces in a copied app password are removed
-automatically. Your Gmail address is used for both login and the sender.
-Restart the backend after changing `.env` (`docker compose up -d --force-recreate`
-for Docker). Codes are never returned in API responses.
+The server is `smtp-relay.brevo.com`. Port `2525` uses STARTTLS before login.
+Port `587` also uses STARTTLS; port `465` uses implicit TLS. Certificate validation
+is enabled in both cases. See [Brevo SMTP setup](https://help.brevo.com/hc/en-us/articles/7924908994450-Send-transactional-emails-using-Brevo-SMTP).
+
+Render Free [blocks outbound ports 25, 465 and 587](https://render.com/docs/free).
+Brevo [supports port 2525 as an alternative](https://help.brevo.com/hc/en-us/articles/10905415650322-Which-SMTP-port-should-I-use-Port-587-465-or-2525),
+so this project defaults to it. Connectivity and actual delivery must still be
+verified from your deployed service. If SMTP remains unavailable, use the HTTPS
+option below instead of disabling TLS.
+
+**Brevo HTTPS option (port 443):**
+
+```dotenv
+EMAIL_MODE=brevo_api
+BREVO_SENDER_EMAIL=your_verified_sender@example.com
+BREVO_SENDER_NAME=NewsLens
+BREVO_API_KEY=your_brevo_api_key
+```
+
+This mode uses Brevo's [transactional email API](https://developers.brevo.com/docs/send-a-transactional-email).
+It requires an API key rather than an SMTP key. No automatic transport fallback
+or retry is performed, to avoid duplicate OTP emails after ambiguous failures.
+
+Deploy the updated code and replace any existing `EMAIL_MODE=gmail` setting.
+Local `.env` files are excluded from Docker images; Render must receive the values
+through its Environment settings. Do not put keys in Flutter or commit them to Git.
+Keep `DATABASE_URL`, `JWT_SECRET`, and other backend settings configured as before.
+Restart after changing `.env` (`docker compose up -d --force-recreate` for Docker),
+or save the Render environment settings and redeploy. Codes are never returned in
+API responses.
+
+To check a deployment, open `/health/ready`, then request one signup/signin OTP
+and check Brevo's Transactional email logs and the recipient's inbox. A healthy
+readiness response checks database, Redis and model availability, not email delivery.
+If sending fails, Render logs include `Authentication operation failed` with the
+underlying error; API mode includes a safe HTTP status/hint without logging the key
+or email body. No live delivery is tested by the automated unit tests.
+
+Existing Gmail configuration is still supported with `EMAIL_MODE=gmail`,
+`GMAIL_ADDRESS`, and `GMAIL_APP_PASSWORD` on hosts allowing Gmail SMTP.
 
 For development without email, `EMAIL_MODE=console` logs OTPs locally. Other
 providers remain supported with `EMAIL_MODE=smtp`, `SMTP_HOST`, `SMTP_FROM`,

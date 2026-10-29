@@ -9,7 +9,11 @@ import time
 import smtplib
 import ssl
 import logging
+import json
 from email.message import EmailMessage
+from email.utils import formataddr
+from urllib.request import Request, urlopen
+from urllib.error import HTTPError, URLError
 
 from typing import Any
 
@@ -62,9 +66,28 @@ class HelperService:
   @staticmethod
   def email_settings() -> dict | None:
     """Validate configuration without connecting or sending email."""
-    mode = os.getenv('EMAIL_MODE', 'gmail').strip().lower()
+    mode = os.getenv('EMAIL_MODE', 'brevo_smtp').strip().lower()
     if mode == 'console':
       return None
+    if mode in ('brevo_smtp', 'brevo_api'):
+      sender = os.getenv('BREVO_SENDER_EMAIL', '').strip()
+      name = os.getenv('BREVO_SENDER_NAME', 'NewsLens').strip() or 'NewsLens'
+      if not sender:
+        raise RuntimeError('BREVO_SENDER_EMAIL must be a verified Brevo sender')
+      if mode == 'brevo_api':
+        api_key = os.getenv('BREVO_API_KEY', '').strip()
+        if not api_key:
+          raise RuntimeError('BREVO_API_KEY is required for Brevo HTTPS delivery')
+        return dict(transport='brevo_api', sender=sender, sender_name=name, api_key=api_key)
+      username = os.getenv('BREVO_SMTP_LOGIN', '').strip()
+      password = os.getenv('BREVO_SMTP_KEY', '').strip()
+      if not username or not password:
+        raise RuntimeError('BREVO_SMTP_LOGIN and BREVO_SMTP_KEY are required; use an SMTP key, not an API key')
+      port = int(os.getenv('BREVO_SMTP_PORT', '2525'))
+      if port not in (2525, 587, 465):
+        raise RuntimeError('BREVO_SMTP_PORT must be 2525, 587 or 465')
+      return dict(host='smtp-relay.brevo.com', port=port, sender=sender,
+                  sender_name=name, username=username, password=password, use_ssl=port == 465)
     if mode == 'gmail':
       address = os.getenv('GMAIL_ADDRESS', '').strip()
       password = ''.join(os.getenv('GMAIL_APP_PASSWORD', '').split())
@@ -73,7 +96,7 @@ class HelperService:
       return dict(host='smtp.gmail.com', port=465, sender=address,
                   username=address, password=password, use_ssl=True)
     if mode != 'smtp':
-      raise RuntimeError('EMAIL_MODE must be gmail, smtp or console')
+      raise RuntimeError('EMAIL_MODE must be brevo_smtp, brevo_api, gmail, smtp or console')
     host = os.getenv('SMTP_HOST')
     sender = os.getenv('SMTP_FROM')
     if not host or not sender:
@@ -92,12 +115,18 @@ class HelperService:
     if settings is None:
       logging.getLogger(__name__).warning('Development OTP for %s: %s', email, otp)
       return
+    subject = 'Your Fake News App verification code'
+    content = (f'Your verification code is {otp}. It expires in 10 minutes.\n'
+               'If you did not request this code, ignore this email.')
+    if settings.get('transport') == 'brevo_api':
+      HelperService._send_brevo_api(settings, email, subject, content)
+      return
     message = EmailMessage()
-    message['Subject'] = 'Your Fake News App verification code'
-    message['From'] = settings['sender']
+    message['Subject'] = subject
+    message['From'] = (formataddr((settings['sender_name'], settings['sender']))
+                       if settings.get('sender_name') else settings['sender'])
     message['To'] = email
-    message.set_content(f'Your verification code is {otp}. It expires in 10 minutes.\n'
-                        'If you did not request this code, ignore this email.')
+    message.set_content(content)
     use_ssl = settings['use_ssl']
     client = smtplib.SMTP_SSL if use_ssl else smtplib.SMTP
     options = {'timeout': 15}
@@ -109,6 +138,33 @@ class HelperService:
       if settings['username']:
         smtp.login(settings['username'], settings['password'])
       smtp.send_message(message)
+
+  @staticmethod
+  def _send_brevo_api(settings: dict, email: str, subject: str, content: str) -> None:
+    """HTTPS alternative for hosts that restrict SMTP; never log keys or OTPs."""
+    payload = {
+      'sender': {'email': settings['sender'], 'name': settings['sender_name']},
+      'to': [{'email': email}], 'subject': subject, 'textContent': content,
+    }
+    request = Request('https://api.brevo.com/v3/smtp/email',
+                      data=json.dumps(payload).encode('utf-8'), method='POST',
+                      headers={'api-key': settings['api_key'], 'Accept': 'application/json',
+                               'Content-Type': 'application/json'})
+    try:
+      with urlopen(request, timeout=15) as response:
+        if response.status != 201:
+          raise RuntimeError(f'Brevo email API returned HTTP {response.status}')
+    except HTTPError as error:
+      # The provider body can contain request data. Surface only a safe hint.
+      status = error.code
+      error.close()
+      hints = {400: 'check the verified sender and email settings',
+               401: 'check BREVO_API_KEY', 403: 'check sender verification and account access',
+               429: 'email rate limit reached; retry later'}
+      hint = hints.get(status, 'email provider unavailable; retry later')
+      raise RuntimeError(f'Brevo email API returned HTTP {status}: {hint}') from None
+    except (URLError, TimeoutError):
+      raise RuntimeError('Cannot reach the Brevo email API; check outbound HTTPS connectivity') from None
 
   @staticmethod
   def fingerprint(value: str) -> str:
